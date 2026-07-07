@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+
+# 구독 파일 — 실제 푸시 endpoint/키가 들어있어 커밋 금지
+subscription.json
+
+# logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# editor
+.vscode/
+.idea/
+
+# env
+.env
+.env.local

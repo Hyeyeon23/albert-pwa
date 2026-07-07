@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#1f2937" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="stylesheet" href="./style.css" />
+  <title>Alerter PWA Example</title>
+</head>
+
+<body>
+  <div class="scene" aria-hidden="true"></div>
+  <main class="app-shell">
+    <div class="hero-mark" aria-hidden="true">
+      <svg viewBox="0 0 120 120" role="presentation">
+        <circle cx="60" cy="60" r="54" class="hero-mark-ring" />
+        <path class="hero-mark-stem"
+          d="M60 72C57 79 54 86 54 94C54 100 56 105 60 109C64 105 66 100 66 94C66 86 63 79 60 72Z" />
+        <path class="hero-mark-leaf" d="M49 86C40 84 34 88 31 96C39 98 46 95 49 86Z" />
+        <path class="hero-mark-leaf" d="M71 86C80 84 86 88 89 96C81 98 74 95 71 86Z" />
+        <path class="hero-mark-petal"
+          d="M60 66C49 66 41 58 41 48C41 38 49 31 60 31C71 31 79 38 79 48C79 58 71 66 60 66Z" />
+        <path class="hero-mark-petal"
+          d="M60 62C50 62 44 54 44 45C44 35 51 28 60 28C69 28 76 35 76 45C76 54 70 62 60 62Z" />
+        <path class="hero-mark-core"
+          d="M60 58C54 58 49 53 49 47C49 41 54 36 60 36C66 36 71 41 71 47C71 53 66 58 60 58Z" />
+        <path class="hero-mark-swirl"
+          d="M60 40C54 40 50 44 50 49C50 54 54 57 59 57C64 57 67 54 67 50C67 46 64 43 60 43C57 43 55 45 55 48C55 50 57 52 59 52" />
+      </svg>
+    </div>
+
+    <div class="panel-grid">
+      <button id="enable-button">on</button>
+
+      <div>
+        <div class="panel-label">Subscription Status</div>
+        <pre id="status">대기 중</pre>
+      </div>
+
+      <div>
+        <div class="panel-label">구독 정보</div>
+        <p class="hint">구독을 누르면 <code>subscription.json</code> 파일이 자동으로 다운로드됩니다. 이 파일을 발송 프로젝트에 넣어 사용하세요.</p>
+        <button id="download-button" hidden>구독 파일 다시 받기</button>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const SUBSCRIBER_ID_KEY = 'alerter-subscriber-id';
+    const statusEl = document.getElementById('status');
+    const enableButton = document.getElementById('enable-button')
+    const downloadButton = document.getElementById('download-button')
+
+    const VAPID_PUBLIC_KEY = 'BIxcMJM7s4Gn4JuvAl1MS5tt6OjIxbyI2ufx8PxCAm_MTOnD-QUsrM0L9AHXMHcY-xfHCwbr4tS8TAJQB1e3KAQ';
+
+    // 마지막으로 만든 구독 레코드를 기억해 재다운로드에 사용합니다.
+    let lastSubscriptionRecord = null;
+
+    function updateStatus(message) {
+      statusEl.textContent = message;
+    }
+
+    function getSubscriberId() {
+      let subscriberId = window.localStorage.getItem(SUBSCRIBER_ID_KEY);
+
+      if (!subscriberId) {
+        if (window.crypto?.randomUUID) {
+          subscriberId = window.crypto.randomUUID();
+        } else {
+          subscriberId = `subscriber-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        }
+
+        window.localStorage.setItem(SUBSCRIBER_ID_KEY, subscriberId);
+      }
+
+      return subscriberId;
+    }
+
+    async function waitWithTimeout(promise, label, timeoutMs = 10000) {
+      let timeoutId;
+      // 권한 요청이나 service worker 준비가 멈출 때 무한 대기를 막습니다. 
+
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = window.setTimeout(() => {
+          reject(new Error(`${label}단계에서 시간이 너무 오래 걸립니다.`))
+        }, timeoutMs);
+      });
+
+      try {
+        // tiemout promise에 등록 하면서 리턴 
+        return await Promise.race([promise, timeoutPromise]);
+      } finally {
+        window.clearTimeout(timeoutId)
+      }
+    }
+
+    // 구독 레코드를 subscription.json 형태로 브라우저에서 다운로드시킵니다.
+    // 발송 프로젝트가 기대하는 배열 형태([{ subscriberId, subscription, ... }])로 감쌉니다.
+    function downloadSubscriptionFile(record) {
+      const fileContent = JSON.stringify([record], null, 2);
+      const blob = new Blob([fileContent], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'subscription.json';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    const base64ToUint8Array = (base64String) => {
+
+      // vapid 공개키는 subscribe가 받는 Unit8Array 형태로 바꿔야 함 
+      const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+
+      const base64 = (base64String + padding)
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
+
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+
+      return outputArray;
+    }
+
+    const registerServiceWorker = async () => {
+      if (!('serviceWorker' in navigator)) {
+        throw new Error('이 브라우저는 service worker를 지원하지 않습니다.');
+      }
+
+      // 버전 쿼리를 붙여 이전 서비스 워커 캐시를 강제로 갱신합니다.
+      return navigator.serviceWorker.register('/sw.js?v=2');
+    }
+
+    const subscribePush = async () => {
+      const subscriberId = getSubscriberId();
+
+      if (!window.isSecureContext) {
+        throw new Error('이 페이지는 안전한 컨텍스트가 아닙니다. localhost 또는 HTTPS로 접속해야 합니다.');
+      }
+
+      if (!('Notification' in window)) {
+        throw new Error('이 브라우저는 Notification API를 지원하지 않습니다.');
+      }
+
+      if (!('PushManager' in window)) {
+        throw new Error('이 브라우저는 Push API를 지원하지 않습니다.');
+      }
+
+      if (Notification.permission === 'denied') {
+        throw new Error('알림 권한이 이미 차단되었습니다. 주소창의 사이트 권한 설정에서 알림을 허용으로 바꿔야 합니다.');
+      }
+
+      updateStatus('1/5 서비스 워커 등록 중...');
+      await waitWithTimeout(registerServiceWorker(), '서비스 워커 등록');
+
+      updateStatus('2/5 서비스 워커 활성화 대기 중...');
+      const registration = await waitWithTimeout(
+        navigator.serviceWorker.ready,
+        '서비스 워커 활성화'
+      );
+
+      updateStatus('3/5 알림 권한 요청 중...');
+      const permission = await waitWithTimeout(
+        Notification.requestPermission(),
+        '알림 권한 요청',
+        30000
+      );
+
+      if (permission !== 'granted') {
+        throw new Error('알림 권한이 허용되지 않았습니다.');
+      }
+
+      updateStatus('4/5 브라우저 푸시 구독 생성 중...');
+      const existingSubscription = await registration.pushManager.getSubscription();
+      // 이미 구독이 있으면 재사용하고, 없을 때만 새 구독을 만듭니다.
+      const subscription = existingSubscription || await waitWithTimeout(
+        registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: base64ToUint8Array(VAPID_PUBLIC_KEY),
+        }),
+        '브라우저 푸시 구독 생성',
+        30000
+      );
+
+      updateStatus('5/5 구독 파일 생성 중...');
+      // 서버 대신 구독 정보를 파일로 내려받습니다. 이 파일을 발송 프로젝트에 넣어 사용합니다.
+      const now = new Date().toISOString();
+      const record = {
+        subscriberId,
+        subscription: subscription.toJSON(),
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      lastSubscriptionRecord = record;
+      downloadSubscriptionFile(record);
+      downloadButton.hidden = false;
+
+      updateStatus(JSON.stringify(record, null, 2));
+    };
+
+    enableButton.addEventListener('click', async () => {
+      try {
+        updateStatus('구독 진행 중...');
+        await subscribePush();
+      } catch (error) {
+        updateStatus(error.message);
+      }
+    });
+
+    downloadButton.addEventListener('click', () => {
+      if (lastSubscriptionRecord) {
+        downloadSubscriptionFile(lastSubscriptionRecord);
+      }
+    });
+  </script>
+</body>
+
+</html>
