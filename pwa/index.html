@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#1f2937" />
-  <link rel="manifest" href="/manifest.json" />
+  <link rel="manifest" href="./manifest.json" />
   <link rel="stylesheet" href="./style.css" />
   <title>Alerter PWA Example</title>
 </head>
@@ -137,7 +137,7 @@
       }
 
       // 버전 쿼리를 붙여 이전 서비스 워커 캐시를 강제로 갱신합니다.
-      return navigator.serviceWorker.register('/sw.js?v=2');
+      return navigator.serviceWorker.register('./sw.js?v=2');
     }
 
     const subscribePush = async () => {
