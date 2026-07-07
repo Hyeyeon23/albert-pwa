@@ -140,8 +140,21 @@ pre {
   color: var(--text-main);
 }
 
-#download-button {
+.action-row {
   margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.action-row button {
+  margin: 0;
+  min-width: 0;
+  padding: 12px 10px;
+  font-size: 14px;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: keep-all;
 }
 
 .hero-mark {
@@ -284,5 +297,14 @@ pre {
   .hero-mark svg {
     width: 112px;
     height: 112px;
+  }
+
+  .action-row {
+    grid-template-columns: 1fr;
+  }
+
+  .action-row button {
+    padding: 14px 12px;
+    font-size: 15px;
   }
 }

@@ -41,8 +41,12 @@
 
       <div>
         <div class="panel-label">구독 정보</div>
-        <p class="hint">구독을 누르면 <code>subscription.json</code> 파일이 자동으로 다운로드됩니다. 이 파일을 발송 프로젝트에 넣어 사용하세요.</p>
-        <button id="download-button" hidden>구독 파일 다시 받기</button>
+        <p class="hint">모바일에선 공유 또는 복사로 바로 전달하고, 필요할 때만 파일 다운로드를 사용하세요.</p>
+        <div class="action-row">
+          <button id="share-button" hidden>메신저로 공유</button>
+          <button id="copy-button" hidden>JSON 복사</button>
+          <button id="download-button" hidden>구독 파일 다운로드</button>
+        </div>
       </div>
     </div>
   </main>
@@ -51,6 +55,8 @@
     const SUBSCRIBER_ID_KEY = 'alerter-subscriber-id';
     const statusEl = document.getElementById('status');
     const enableButton = document.getElementById('enable-button')
+    const shareButton = document.getElementById('share-button')
+    const copyButton = document.getElementById('copy-button')
     const downloadButton = document.getElementById('download-button')
 
     const VAPID_PUBLIC_KEY = 'BIxcMJM7s4Gn4JuvAl1MS5tt6OjIxbyI2ufx8PxCAm_MTOnD-QUsrM0L9AHXMHcY-xfHCwbr4tS8TAJQB1e3KAQ';
@@ -60,6 +66,35 @@
 
     function updateStatus(message) {
       statusEl.textContent = message;
+    }
+
+    function serializeSubscriptionRecord(record) {
+      return JSON.stringify([record], null, 2);
+    }
+
+    async function copySubscriptionJson(record) {
+      const text = serializeSubscriptionRecord(record);
+
+      if (!navigator.clipboard?.writeText) {
+        throw new Error('이 브라우저는 클립보드 복사를 지원하지 않습니다. 공유 또는 다운로드를 사용하세요.');
+      }
+
+      await navigator.clipboard.writeText(text);
+      updateStatus('subscription.json 내용이 클립보드에 복사되었습니다.');
+    }
+
+    async function shareSubscriptionJson(record) {
+      const text = serializeSubscriptionRecord(record);
+
+      if (!navigator.share) {
+        throw new Error('이 브라우저는 공유 기능을 지원하지 않습니다. 복사 또는 다운로드를 사용하세요.');
+      }
+
+      await navigator.share({
+        title: 'subscription.json',
+        text,
+      });
+      updateStatus('구독 정보를 공유했습니다.');
     }
 
     function getSubscriberId() {
@@ -99,7 +134,7 @@
     // 구독 레코드를 subscription.json 형태로 브라우저에서 다운로드시킵니다.
     // 발송 프로젝트가 기대하는 배열 형태([{ subscriberId, subscription, ... }])로 감쌉니다.
     function downloadSubscriptionFile(record) {
-      const fileContent = JSON.stringify([record], null, 2);
+      const fileContent = serializeSubscriptionRecord(record);
       const blob = new Blob([fileContent], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
 
@@ -202,7 +237,20 @@
       };
 
       lastSubscriptionRecord = record;
-      downloadSubscriptionFile(record);
+      if (navigator.share) {
+        try {
+          await shareSubscriptionJson(record);
+        } catch {
+          // 공유 취소 또는 실패 시 아래 보조 수단(복사/다운로드)을 사용합니다.
+        }
+      }
+
+      if (!lastSubscriptionRecord) {
+        throw new Error('구독 정보를 저장하지 못했습니다.');
+      }
+
+      shareButton.hidden = false;
+      copyButton.hidden = false;
       downloadButton.hidden = false;
 
       updateStatus(JSON.stringify(record, null, 2));
@@ -220,6 +268,31 @@
     downloadButton.addEventListener('click', () => {
       if (lastSubscriptionRecord) {
         downloadSubscriptionFile(lastSubscriptionRecord);
+        updateStatus('subscription.json 파일을 다운로드했습니다.');
+      }
+    });
+
+    copyButton.addEventListener('click', async () => {
+      if (!lastSubscriptionRecord) {
+        return;
+      }
+
+      try {
+        await copySubscriptionJson(lastSubscriptionRecord);
+      } catch (error) {
+        updateStatus(error.message);
+      }
+    });
+
+    shareButton.addEventListener('click', async () => {
+      if (!lastSubscriptionRecord) {
+        return;
+      }
+
+      try {
+        await shareSubscriptionJson(lastSubscriptionRecord);
+      } catch (error) {
+        updateStatus(error.message);
       }
     });
   </script>
