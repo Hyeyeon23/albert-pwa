@@ -46,8 +46,11 @@ self.addEventListener('push', (event) => {
       }
     }
 
+    const notificationTag = `push-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
     await self.registration.showNotification(title, {
       body,
+      tag: notificationTag,
       icon: './icon.svg',
       badge: './icon.svg',
     });
