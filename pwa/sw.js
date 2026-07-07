@@ -19,7 +19,7 @@ self.addEventListener('push', (event) => {
   }
 
   event.waitUntil((async () => {
-    let title = 'Alerter';
+    let title = 'ALBERT';
     let body = '새 알림이 도착했습니다.';
 
     if (event.data) {

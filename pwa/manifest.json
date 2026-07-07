@@ -1,6 +1,6 @@
 {
-  "name": "Alerter Example",
-  "short_name": "Alerter",
+  "name": "ALBERT",
+  "short_name": "ALBERT",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
